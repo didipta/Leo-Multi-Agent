@@ -95,9 +95,20 @@ EVAL_TASK = Template(
     "Quiz Master's Quiz Specification:\n$quiz\n\n"
     "Student's Submitted Answers (mapping of question_id -> student answer):\n$answers\n\n"
     "Instructions:\n"
-    "1. For each question, produce a Grade object with question_id, score (0, 1, or 2), concept tag, and constructive feedback.\n"
-    "2. Provide an overall_feedback paragraph summarizing performance.\n"
-    "3. List all concepts where score < 2 in 'weak_concepts'. If none, leave weak_concepts empty."
+    "1. Grade each question: 2 = fully correct, 1 = partially correct, 0 = incorrect or skipped.\n"
+    "2. Provide targeted feedback per question.\n"
+    "3. List all concepts where score < 2 in 'weak_concepts'.\n\n"
+    "Return ONLY a valid JSON object in this exact structure:\n"
+    "```json\n"
+    "{\n"
+    '  "grades": [\n'
+    '    {"question_id": 1, "score": 2, "concept": "Concept tag", "feedback": "Detailed feedback"}\n'
+    "  ],\n"
+    '  "overall_feedback": "Summary of student understanding and areas to review.",\n'
+    '  "weak_concepts": ["concept_if_score_less_than_2"],\n'
+    '  "mastery_summary": "Encouraging remark"\n'
+    "}\n"
+    "```"
 )
 
 RETEACH_TASK = Template(

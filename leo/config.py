@@ -13,39 +13,39 @@ MAX_RELEARN = int(os.environ.get("LEO_MAX_RELEARN", "2"))
 PASS_PCT = int(os.environ.get("LEO_PASS_PCT", "70"))
 N_QUESTIONS = int(os.environ.get("LEO_N_QUESTIONS", "4"))
 
-DEFAULT_MODEL = os.environ.get("LEO_MODEL", "gemini/gemini-3.5-flash")
+DEFAULT_MODEL = os.environ.get("LEO_MODEL", "gemini/gemini-3.5-flash").strip()
 
 
 def get_llm():
     """Build and return configured CrewAI LLM instance."""
     from crewai import LLM
 
-    gemini_key = os.environ.get("GEMINI_API_KEY")
-    openai_key = os.environ.get("OPENAI_API_KEY")
-    groq_key = os.environ.get("GROQ_API_KEY")
+    gemini_key = (os.environ.get("GEMINI_API_KEY") or "").strip()
+    openai_key = (os.environ.get("OPENAI_API_KEY") or "").strip()
+    groq_key = (os.environ.get("GROQ_API_KEY") or "").strip()
+    active_model = os.environ.get("LEO_MODEL", DEFAULT_MODEL).strip()
 
-    if gemini_key and gemini_key != "your-key-here":
+    if gemini_key and gemini_key not in ("your-key-here", "your-gemini-api-key-here"):
         return LLM(
-            model=DEFAULT_MODEL if "gemini" in DEFAULT_MODEL else f"gemini/{DEFAULT_MODEL}",
+            model=active_model if "gemini" in active_model else f"gemini/{active_model}",
             api_key=gemini_key,
             temperature=0.3,
         )
     elif openai_key:
         return LLM(
-            model=os.environ.get("LEO_MODEL", "gpt-4o-mini"),
+            model=active_model if active_model.startswith("gpt") else "gpt-4o-mini",
             api_key=openai_key,
             temperature=0.3,
         )
     elif groq_key:
         return LLM(
-            model=os.environ.get("LEO_MODEL", "groq/llama-3.3-70b-versatile"),
+            model=active_model if "groq" in active_model else f"groq/{active_model}",
             api_key=groq_key,
             temperature=0.3,
         )
     else:
-        # Return fallback configuration or raise descriptive message
         return LLM(
-            model=DEFAULT_MODEL,
+            model=active_model,
             api_key=gemini_key or "missing-key",
             temperature=0.3,
         )

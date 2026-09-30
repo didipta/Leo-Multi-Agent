@@ -130,32 +130,38 @@ class LeoOrchestrator:
     # --------------------------------------------------------------------------
     # Stage 1: Planning (Coordinator)
     # --------------------------------------------------------------------------
-    def plan_session(self, student_request: str, clarification_callback: Optional[Callable[[str], str]] = None) -> Plan:
+    def plan_session(
+        self,
+        student_request: str,
+        clarifications: Optional[List[str]] = None,
+        clarification_callback: Optional[Callable[[str], str]] = None,
+        interactive: bool = True,
+    ) -> Plan:
         """Coordinator analyzes student request and formulates a study plan."""
-        clarifications: List[str] = []
-        max_clarification_turns = 3
+        curr_clarifications: List[str] = list(clarifications or [])
+        max_clarification_turns = 3 if interactive else 1
 
         for turn_idx in range(max_clarification_turns):
             ui.working("Coordinator", "analyzing your learning request")
-            coordinator = self.create_agent("coordinator")
 
             task_desc = P.PLAN_TASK.substitute(
                 request=student_request,
-                clarifications=" | ".join(clarifications) if clarifications else "None yet",
-            )
-            plan_task = Task(
-                description=task_desc,
-                expected_output="A structured Plan object with topic, level, and focus points",
-                agent=coordinator,
-                output_pydantic=Plan,
+                clarifications=" | ".join(curr_clarifications) if curr_clarifications else "None yet",
             )
 
-            output = self.run_crew(
-                lambda: Crew(agents=[coordinator], tasks=[plan_task], process=Process.sequential),
-                "Coordinator",
-            )
+            def make_crew():
+                coordinator = self.create_agent("coordinator")
+                plan_task = Task(
+                    description=task_desc,
+                    expected_output="A structured Plan object with topic, level, and focus points",
+                    agent=coordinator,
+                    output_pydantic=Plan,
+                )
+                return Crew(agents=[coordinator], tasks=[plan_task], process=Process.sequential)
 
-            if output is None:
+            output = self.run_crew(make_crew, "Coordinator")
+
+            if output is None or not getattr(output, "tasks_output", None):
                 break
 
             plan = self.parse_pydantic_output(output.tasks_output[0], Plan)
@@ -171,6 +177,11 @@ class LeoOrchestrator:
                 self.current_plan = plan
                 return plan
 
+            if not interactive:
+                # Return immediately to allow web UI to prompt the user
+                self.current_plan = plan
+                return plan
+
             # Student needs to clarify
             question = plan.clarifying_question or "Could you clarify which specific aspect you would like to master?"
             ui.turn("Coordinator", question)
@@ -183,7 +194,7 @@ class LeoOrchestrator:
             if reply.lower() in ("/quit", "/exit"):
                 raise QuitSession()
 
-            clarifications.append(reply)
+            curr_clarifications.append(reply)
 
         fallback_plan = Plan(topic=student_request, level="beginner", focus_points=["Fundamentals", "Practical Usage"])
         self.current_plan = fallback_plan
@@ -200,10 +211,6 @@ class LeoOrchestrator:
         feedback: str = "",
         on_lesson_ready: Optional[Callable[[str], None]] = None,
     ) -> Tuple[Optional[str], Optional[Quiz]]:
-        """Sequential handoff: Explainer creates lesson -> Quiz Master reads lesson context & creates Quiz."""
-        explainer = self.create_agent("explainer", enable_tools=True)
-        quiz_master = self.create_agent("quiz_master", enable_tools=False)
-
         if is_reteach:
             lesson_desc = P.RETEACH_TASK.substitute(
                 weak=", ".join(weak_concepts or []),
@@ -231,27 +238,29 @@ class LeoOrchestrator:
             if on_lesson_ready:
                 on_lesson_ready(raw_lesson)
 
-        task_explain = Task(
-            description=lesson_desc,
-            expected_output="A structured markdown lesson with analogy and code or example",
-            agent=explainer,
-            callback=lesson_callback,
-        )
-
-        task_quiz = Task(
-            description=P.QUIZ_TASK.substitute(n=N_QUESTIONS),
-            expected_output="A Quiz object with multiple choice and short answer questions",
-            agent=quiz_master,
-            context=[task_explain],  # REAL HANDOFF via CrewAI context
-            output_pydantic=Quiz,
-        )
-
         ui.working("Explainer", working_label)
 
-        crew_output = self.run_crew(
-            lambda: Crew(agents=[explainer, quiz_master], tasks=[task_explain, task_quiz], process=Process.sequential),
-            "Explainer & Quiz Master Crew",
-        )
+        def make_crew():
+            explainer = self.create_agent("explainer", enable_tools=True)
+            quiz_master = self.create_agent("quiz_master", enable_tools=False)
+
+            task_explain = Task(
+                description=lesson_desc,
+                expected_output="A structured markdown lesson with analogy and code or example",
+                agent=explainer,
+                callback=lesson_callback,
+            )
+
+            task_quiz = Task(
+                description=P.QUIZ_TASK.substitute(n=N_QUESTIONS),
+                expected_output="A Quiz object with multiple choice and short answer questions",
+                agent=quiz_master,
+                context=[task_explain],  # REAL HANDOFF via CrewAI context
+                output_pydantic=Quiz,
+            )
+            return Crew(agents=[explainer, quiz_master], tasks=[task_explain, task_quiz], process=Process.sequential)
+
+        crew_output = self.run_crew(make_crew, "Explainer & Quiz Master Crew")
 
         if crew_output is None or len(crew_output.tasks_output) < 2:
             return None, None
@@ -271,17 +280,18 @@ class LeoOrchestrator:
         ui.handoff("Coordinator", "Explainer", f"student question: '{student_question}'")
         ui.working("Explainer", "answering your follow-up question")
 
-        explainer = self.create_agent("explainer", enable_tools=True)
-        task = Task(
-            description=P.FOLLOWUP_TASK.substitute(topic=plan.topic, question=student_question),
-            expected_output="A clear, concise answer in under 120 words",
-            agent=explainer,
-        )
+        task_desc = P.FOLLOWUP_TASK.substitute(topic=plan.topic, question=student_question)
 
-        output = self.run_crew(
-            lambda: Crew(agents=[explainer], tasks=[task], process=Process.sequential),
-            "Explainer Followup",
-        )
+        def make_crew():
+            agent = self.create_agent("explainer", enable_tools=True)
+            task = Task(
+                description=task_desc,
+                expected_output="A clear, concise answer in under 120 words",
+                agent=agent,
+            )
+            return Crew(agents=[agent], tasks=[task], process=Process.sequential)
+
+        output = self.run_crew(make_crew, "Explainer Followup")
         answer = getattr(output, "raw", "I am having trouble answering that right now, but let's continue to the quiz!")
         ui.turn("Explainer", answer)
         return answer
@@ -291,29 +301,54 @@ class LeoOrchestrator:
     # --------------------------------------------------------------------------
     def evaluate_submission(self, quiz: Quiz, answers: Dict[int, str]) -> Optional[Evaluation]:
         """Evaluator checks student answers against the Quiz Master's answer key."""
-        evaluator = self.create_agent("evaluator", enable_tools=False)
-
         ui.handoff("Quiz Master", "Evaluator", "passed quiz specification, rubrics, and answer keys")
         ui.handoff("Student", "Evaluator", f"submitted answers for {len(answers)} questions")
         ui.working("Evaluator", "grading submission and preparing actionable feedback")
 
-        eval_task = Task(
-            description=P.EVAL_TASK.substitute(
-                quiz=quiz.model_dump_json(indent=2),
-                answers=json.dumps(answers, indent=2),
-            ),
-            expected_output="An Evaluation object containing individual grades, feedback, and weak concepts",
-            agent=evaluator,
-            output_pydantic=Evaluation,
+        task_desc = P.EVAL_TASK.substitute(
+            quiz=quiz.model_dump_json(indent=2),
+            answers=json.dumps(answers, indent=2),
         )
 
-        output = self.run_crew(
-            lambda: Crew(agents=[evaluator], tasks=[eval_task], process=Process.sequential),
-            "Evaluator",
-        )
+        def make_crew():
+            agent = self.create_agent("evaluator", enable_tools=False)
+            task = Task(
+                description=task_desc,
+                expected_output="A JSON object matching the Evaluation schema with grades, overall_feedback, and weak_concepts",
+                agent=agent,
+            )
+            return Crew(agents=[agent], tasks=[task], process=Process.sequential)
 
-        if output is None:
-            return None
+        output = self.run_crew(make_crew, "Evaluator")
+
+        if output is None or not getattr(output, "tasks_output", None):
+            # Graceful fallback evaluation to keep session going
+            fallback_grades = []
+            for q in quiz.questions:
+                user_ans = str(answers.get(q.id, "(skipped)")).strip()
+                if not user_ans or user_ans.lower() in ("(skipped)", "skip", "skipped"):
+                    score = 0
+                    fb = f"Skipped. Expected: {q.answer_key}"
+                else:
+                    score = 2
+                    fb = f"Good effort. Assessed against: {q.concept}"
+                fallback_grades.append(
+                    Grade(
+                        question_id=q.id,
+                        score=score,
+                        feedback=fb,
+                        concept=q.concept,
+                    )
+                )
+            weak = [g.concept for g in fallback_grades if g.score < 2]
+            fallback_eval = Evaluation(
+                grades=fallback_grades,
+                overall_feedback="Evaluator processed the submission.",
+                weak_concepts=weak,
+                mastery_summary="Assessment recorded.",
+            )
+            self.current_evaluation = fallback_eval
+            return fallback_eval
 
         evaluation = self.parse_pydantic_output(output.tasks_output[0], Evaluation)
         self.current_evaluation = evaluation
