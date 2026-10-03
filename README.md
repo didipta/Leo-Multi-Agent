@@ -1,5 +1,7 @@
 # 🎓 Leo: Multi-Agent AI Tutor
 
+> 🎥 **Demo Video:** [Watch the Walkthrough on Google Drive](https://drive.google.com/file/d/1wlI009nKAwRElRV_LWQKP3LKoUv1Yymm/view?usp=sharing)
+
 Leo is an intelligent, multi-agent educational assistant engineered with **CrewAI** and the **Google Gemini API**. Instead of acting as a single monolithic chatbot, Leo decomposes the pedagogical process across four specialized AI agents that collaborate, execute real context handoffs, remember student mastery, use external tools, and trigger automated remedial feedback loops.
 
 ---
@@ -191,24 +193,4 @@ Enjoy a fully interactive Rich CLI experience featuring colored panels, real-tim
 
 ## 🎥 Demo Video Guide (3–5 Minutes)
 
-When recording your submission walkthrough:
-
-1. **Introduction & Architecture (30s):**
-   - Show the GitHub repository and walk through the Mermaid architecture diagram.
-   - Point out the 4 distinct agent roles and the `leo/` modular folder structure.
-2. **Coordinator Clarification (45s):**
-   - Enter a vague request (e.g., *"Teach me AI"*).
-   - Show the Coordinator pausing to ask a clarifying question, then establishing the formal `Plan`.
-3. **Explainer & Real Handoff (45s):**
-   - Watch the Explainer deliver the structured lesson (definition, analogy, code example, takeaways).
-   - Point out the clear handoff banner: `Explainer ➔ Quiz Master` with the lesson passed as context.
-4. **Human-in-the-Loop Step (30s):**
-   - Intervene before the quiz to ask a clarification question. Show the Explainer replying directly.
-5. **Quiz Master & Answering (45s):**
-   - Answer the quiz questions (deliberately answer 1–2 incorrectly to demonstrate diagnostic grading).
-6. **Evaluator Diagnosis & Bonus Feedback Loop (60s):**
-   - Show the Evaluator grading the submission, providing per-question feedback, and highlighting weak concepts.
-   - Show the score below 70% triggering the **Bonus Feedback Loop**.
-   - Click/accept the re-teach option: show the Explainer teaching the weak concept with a *new* analogy, followed by a new quiz.
-7. **Memory Verification (15s):**
-   - Open the sidebar Memory drawer or re-launch the app to show that Leo remembered the student's name, previous topics, and scores.
+> 🔗 **Video Walkthrough:** [Watch Demo on Google Drive](https://drive.google.com/file/d/1wlI009nKAwRElRV_LWQKP3LKoUv1Yymm/view?usp=sharing)
